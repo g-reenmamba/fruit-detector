@@ -1,9 +1,10 @@
+# Runtime dependencies for the app (also used for training).
+# The extra index serves CPU-only PyTorch wheels (~200 MB instead of ~2.5 GB
+# of CUDA libraries), which keeps the Streamlit Cloud build small and fast.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0
 torchvision==0.28.0
-numpy==2.4.4
-matplotlib==3.10.9
-scikit-learn==1.8.0
-pillow==12.2.0
-opencv-python==4.13.0.92
+timm==1.0.30
 streamlit==1.62.0
+pillow
+numpy

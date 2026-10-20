@@ -1,89 +1,112 @@
 """
 model.py
 --------
-ResNet18 with transfer learning for VisionGuard.
+The network behind Fruit Detector: an ImageNet-pretrained backbone with a
+small fresh/rotten head on top (transfer learning).
 
-Instead of training a CNN from scratch (which needs a lot of data and
-time), we start from a ResNet18 already trained on ImageNet (1.2M images,
-1000 classes) and adapt it to our much smaller classification problem.
+What changed vs. the first version, and why:
+
+  * Backbone weights come from timm's GitHub release (a stable, public URL
+    that works on a laptop, in CI and on Streamlit Cloud). No more local
+    "pretrained cache" fallback to maintain.
+  * The head has Dropout in front of the Linear layer. With few fruit types
+    to learn from, a little dropout stops the head memorising them.
+  * `freeze_backbone` now ALSO puts BatchNorm layers into eval mode
+    (see `set_frozen_bn_eval`). requires_grad=False stops the weights from
+    changing, but BatchNorm's running mean/variance still update every time
+    model.train() runs a batch. In the old model those statistics drifted
+    toward the 7 training screenshots -- a silent form of overfitting.
+  * get_device() also picks Apple-Silicon GPUs (MPS), so training on a Mac
+    is several times faster than on CPU.
 """
 
-import os
-
+import timm
 import torch
 import torch.nn as nn
-from torchvision import models
 
-# Local fallback cache for ImageNet-pretrained ResNet18 weights. Torchvision
-# normally downloads these on demand from download.pytorch.org; some
-# networks (including this project's sandbox) block that host specifically
-# while still allowing github.com/pypi.org. scripts/fetch_pretrained_backbone.py
-# populates this file from a verified GitHub mirror. Not committed to git
-# (see .gitignore) since it's a large, easily re-obtainable binary.
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_LOCAL_BACKBONE_CACHE = os.path.join(_PROJECT_ROOT, "checkpoints", "pretrained", "resnet18_imagenet.pth")
-
-
-def _load_pretrained_resnet18():
-    """
-    Return a torchvision ResNet18 with genuine ImageNet-pretrained weights.
-
-    Tries torchvision's normal online download first (works in most
-    environments, and keeps this code portable). Falls back to a local
-    cached copy of the same architecture's weights if that download fails
-    -- see scripts/fetch_pretrained_backbone.py for how the cache is built
-    and verified.
-    """
-    try:
-        return models.resnet18(weights="DEFAULT")
-    except Exception as download_error:
-        if not os.path.exists(_LOCAL_BACKBONE_CACHE):
-            raise RuntimeError(
-                "Could not download pretrained ResNet18 weights, and no "
-                f"local fallback cache exists at {_LOCAL_BACKBONE_CACHE}. "
-                "Run scripts/fetch_pretrained_backbone.py, or connect to a "
-                "network that can reach download.pytorch.org."
-            ) from download_error
-
-        model = models.resnet18(weights=None)  # architecture only, random init
-        state_dict = torch.load(_LOCAL_BACKBONE_CACHE, map_location="cpu", weights_only=False)
-        model.load_state_dict(state_dict)
-        return model
+# Architecture name in timm -> (pretrained-weights URL, input size).
+# All URLs are GitHub release assets of huggingface/pytorch-image-models.
+_RELEASE = "https://github.com/huggingface/pytorch-image-models/releases/download/"
+BACKBONES = {
+    "efficientnet_b0": (_RELEASE + "v0.1-weights/efficientnet_b0_ra-3dd342df.pth", 224),
+    "resnet18": (_RELEASE + "v0.1-rsb-weights/resnet18_a1_0-d63eafa0.pth", 224),
+    "resnet50": (_RELEASE + "v0.1-rsb-weights/resnet50_a1_0-14fe96d1.pth", 224),
+    "mobilenetv3_large_100": (_RELEASE + "v0.1-weights/mobilenetv3_large_100_ra-f55367f5.pth", 224),
+    "efficientnet_b3": (_RELEASE + "v0.1-weights/efficientnet_b3_ra2-cf984f9c.pth", 288),
+}
+DEFAULT_ARCH = "efficientnet_b0"
 
 
-def build_model(num_classes, freeze_backbone=True):
-    """
-    Load a pretrained ResNet18 and adapt it to `num_classes` outputs.
+class FreshnessNet(nn.Module):
+    """Backbone (feature extractor) + Dropout + Linear head."""
 
-    freeze_backbone=True freezes every existing ResNet18 weight, so the
-    only thing that trains initially is the brand-new final layer. This
-    is fast and hard to overfit with a small dataset. Once results look
-    reasonable, layers can be selectively unfrozen (see unfreeze_layer4
-    below) to fine-tune the backbone's higher-level features to this
-    specific task.
-    """
-    model = _load_pretrained_resnet18()
+    def __init__(self, arch=DEFAULT_ARCH, num_classes=2, dropout=0.3, pretrained=True):
+        super().__init__()
+        if arch not in BACKBONES:
+            raise ValueError(f"unknown arch {arch!r}; choose from {list(BACKBONES)}")
+        self.arch = arch
+        # num_classes=0 -> timm returns pooled features instead of ImageNet logits
+        self.backbone = timm.create_model(arch, pretrained=False, num_classes=0)
+        if pretrained:
+            url, _ = BACKBONES[arch]
+            state = torch.hub.load_state_dict_from_url(url, map_location="cpu", progress=True)
+            # strict=False only because the ImageNet classifier weights have
+            # nowhere to go (we removed that layer); everything else must load.
+            missing, _ = self.backbone.load_state_dict(state, strict=False)
+            if missing:
+                raise RuntimeError(f"pretrained weights did not match {arch}: missing {missing[:5]}")
+        self.head = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(self.backbone.num_features, num_classes),
+        )
 
+    def forward(self, x):
+        return self.head(self.backbone(x))
+
+
+def build_model(num_classes=2, arch=DEFAULT_ARCH, pretrained=True, freeze_backbone=True):
+    model = FreshnessNet(arch=arch, num_classes=num_classes, pretrained=pretrained)
     if freeze_backbone:
-        for param in model.parameters():
-            param.requires_grad = False
-
-    # model.fc is ResNet18's final linear layer, originally
-    # in_features=512 -> out_features=1000 (ImageNet's 1000 classes).
-    # Replacing it creates a brand-new layer with requires_grad=True by
-    # default, sized for our actual number of classes.
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
-
+        for p in model.backbone.parameters():
+            p.requires_grad = False
     return model
 
 
-def unfreeze_layer4(model):
-    """Unfreeze the last ResNet block, for a fine-tuning pass after initial training."""
-    for param in model.layer4.parameters():
-        param.requires_grad = True
+def unfreeze_top(model, fraction=0.5):
+    """
+    Unfreeze the top `fraction` of the backbone's parameter tensors (the
+    later, more task-specific layers) for the fine-tuning stage. The early
+    layers -- edges, textures, colour blobs -- stay frozen: they are already
+    general, and keeping them fixed is a strong guard against overfitting.
+    """
+    params = list(model.backbone.parameters())
+    start = int(len(params) * (1 - fraction))
+    for p in params[start:]:
+        p.requires_grad = True
     return model
+
+
+def set_frozen_bn_eval(model):
+    """
+    Call after model.train(): any BatchNorm layer whose weights are frozen
+    goes back to eval mode, so its running statistics stay the ImageNet ones
+    instead of drifting toward whatever is in the current batch.
+    """
+    for m in model.modules():
+        if isinstance(m, nn.modules.batchnorm._BatchNorm):
+            if not any(p.requires_grad for p in m.parameters()):
+                m.eval()
+    return model
+
+
+def image_size(arch):
+    return BACKBONES[arch][1]
 
 
 def get_device():
-    """Device-agnostic helper: use a GPU if one is available, else fall back to CPU."""
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    """Use an NVIDIA GPU, else an Apple-Silicon GPU (MPS), else the CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")

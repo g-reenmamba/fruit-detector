@@ -1,14 +1,28 @@
 """
 inference.py
--------------
-Command-line inference: given an image path, load the trained checkpoint
-and print the predicted class + confidence. This is the same logic the
-Streamlit app will call later -- proving it works from the terminal first.
+------------
+Load the trained checkpoint and judge an image. app.py calls the same
+load_model() / predict_image() functions, so the terminal and the web app
+can never disagree.
 
-Run from the project root:
-    python3 src/inference.py path/to/some_photo.jpg
+    python3 src/inference.py path/to/photo.jpg
+    python3 src/inference.py samples/          # a whole folder; files named
+                                               # fresh_*.png / rotten_*.png are scored
+
+What changed vs. the first version, and why:
+
+  * The model is rebuilt with pretrained=False. All weights come from the
+    checkpoint, so the app never downloads backbone weights it would
+    immediately overwrite (faster cold start on Streamlit Cloud).
+  * Logits are divided by the calibrated temperature saved at training
+    time, so confidence numbers are honest.
+  * Test-time augmentation: the image and its mirror image are both
+    scored and averaged. Cheap, and steadier on odd photos.
+  * verdict() turns probabilities into fresh / rotten / unsure. Below
+    UNSURE_BELOW confidence the app says it isn't sure rather than guessing.
 """
 
+import os
 import sys
 
 import torch
@@ -18,56 +32,59 @@ from PIL import Image
 from dataset import eval_transform
 from model import build_model, get_device
 
+UNSURE_BELOW = 0.70  # confidence under this -> "not sure"
+DEFAULT_CHECKPOINT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                  "checkpoints", "best_model.pth")
 
-def load_model(checkpoint_path="checkpoints/best_model.pth"):
+
+def load_model(checkpoint_path=DEFAULT_CHECKPOINT):
     device = get_device()
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    classes = checkpoint["classes"]
-
-    model = build_model(num_classes=len(classes), freeze_backbone=True).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    classes = ckpt["classes"]
+    model = build_model(len(classes), arch=ckpt["arch"], pretrained=False, freeze_backbone=False)
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.temperature = ckpt.get("temperature", 1.0)
+    model.transform = eval_transform(ckpt.get("img_size", 224))
+    model.to(device).eval()
     return model, classes, device
 
 
+@torch.no_grad()
 def predict_image(image, model, classes, device):
-    """
-    Same as predict() below, but takes an already-loaded PIL Image instead
-    of a file path. Used by app.py so an uploaded image can go straight
-    from memory into the model, with no temp file written to disk.
-    """
-    tensor = eval_transform(image.convert("RGB")).unsqueeze(0).to(device)  # add a batch dimension of 1
-
-    with torch.no_grad():
-        logits = model(tensor)
-        # CrossEntropyLoss (used during training) works directly on raw logits
-        # and applies its own internal log-softmax. For a human-readable
-        # "93.4% confident" number here, we apply softmax explicitly ourselves.
-        probs = F.softmax(logits, dim=1)[0]
-
-    pred_idx = probs.argmax().item()
-    pred_class = classes[pred_idx]
-    confidence = probs[pred_idx].item()
-    all_probs = dict(zip(classes, probs.tolist()))
-
-    return pred_class, confidence, all_probs
+    """PIL image -> (predicted class, confidence, {class: probability})."""
+    x = model.transform(image.convert("RGB")).unsqueeze(0).to(device)
+    x = torch.cat([x, torch.flip(x, dims=[3])])            # original + mirror
+    logits = model(x).mean(0) / model.temperature            # average, then calibrate
+    probs = F.softmax(logits, dim=0).cpu()
+    idx = int(probs.argmax())
+    return classes[idx], float(probs[idx]), dict(zip(classes, probs.tolist()))
 
 
-def predict(image_path, model=None, classes=None, device=None, checkpoint_path="checkpoints/best_model.pth"):
-    if model is None:
-        model, classes, device = load_model(checkpoint_path)
+def verdict(pred_class, confidence):
+    return pred_class if confidence >= UNSURE_BELOW else "unsure"
 
-    image = Image.open(image_path).convert("RGB")
-    return predict_image(image, model, classes, device)
+
+def _main(target, checkpoint_path=DEFAULT_CHECKPOINT):
+    model, classes, device = load_model(checkpoint_path)
+    paths = ([os.path.join(target, f) for f in sorted(os.listdir(target))
+              if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))]
+             if os.path.isdir(target) else [target])
+    scored = correct = 0
+    for path in paths:
+        pred, conf, probs = predict_image(Image.open(path), model, classes, device)
+        name = os.path.basename(path)
+        truth = name.split("_")[0] if name.split("_")[0] in classes else None
+        mark = "" if truth is None else ("  OK" if pred == truth else "  WRONG")
+        print(f"{name:32s} -> {verdict(pred, conf):7s} ({conf * 100:5.1f}% {pred}){mark}")
+        if truth:
+            scored += 1
+            correct += pred == truth
+    if scored:
+        print(f"\n{correct}/{scored} correct")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("usage: python3 src/inference.py <path-to-image>")
+        print("usage: python3 src/inference.py <image-or-folder>")
         sys.exit(1)
-
-    pred_class, confidence, all_probs = predict(sys.argv[1])
-    print(f"prediction: {pred_class}  (confidence: {confidence * 100:.1f}%)")
-    print("all class probabilities:")
-    for cls, p in all_probs.items():
-        print(f"  {cls:12s} {p * 100:5.1f}%")
+    _main(sys.argv[1])

@@ -1,0 +1,17 @@
+[theme]
+# The pixel-art look is designed for a light palette; don't follow the OS into dark mode.
+base = "light"
+primaryColor = "#3D4C7E"
+backgroundColor = "#F3F1FB"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#2E2F5B"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+# serves ./static (the bundled pixel fonts) at app/static/...
+enableStaticServing = true
