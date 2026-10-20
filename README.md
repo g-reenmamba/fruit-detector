@@ -4,7 +4,7 @@
 with a confidence score. It says *"not sure"* when it doesn't know, and *"that's not
 a fruit"* when it isn't one.
 
-**Live demo:** https://fruit-detector.streamlit.app
+**Live demo:** https://fruit-detector-jywf8hr9vrvfnj8appppdlxl.streamlit.app
 
 ![screenshot](docs/screenshot.png)
 
