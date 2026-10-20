@@ -255,6 +255,14 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .fd-slot p, .fd-waiting p {{ margin: 0; color: #6B6E9C; max-width: 30ch; line-height: 1.15; }}
 .fd-ghost {{ opacity: 0.35; }}
 
+/* about window: rules note, then facts */
+.fd-rules {{
+  background: #FBF0CC; border: 3px solid var(--ink); box-shadow: 4px 4px 0 rgba(46, 47, 91, 0.35);
+  padding: 10px 14px; margin: 2px 0 16px;
+}}
+.fd-rules p {{ margin: 0; line-height: 1.15; }}
+.fd-rules .fd-rules-title {{ font-family: var(--display); font-weight: 700; font-size: 20px; margin-bottom: 4px; }}
+.fd-rules b {{ font-family: var(--display); font-weight: 700; font-size: 20px; }}
 /* about window */
 .fd-about {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }}
 .fd-about li {{ display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: baseline; line-height: 1.15; }}
@@ -334,7 +342,9 @@ def waiting():
 
 
 def about(repo_url, n_produce):
-    return ('<ul class="fd-about">'
+    return ('<div class="fd-rules" role="note"><p class="fd-rules-title">Rules</p>'
+            '<p>Upload <b>one</b> fruit or vegetable per photo. A photo with several can give wrong results.</p></div>'
+            '<ul class="fd-about">'
             f'<li><span>Knows what fresh and rotten look like for <b>{n_produce} kinds</b> of fruit and veg.</span></li>'
             '<li><span>Got <b>69 of 71</b> real test photos right, fresh and rotten, whole and cut.</span></li>'
             '<li><span>Says <b>not sure</b> under 70% confidence, and spots photos that aren\'t produce.</span></li>'
