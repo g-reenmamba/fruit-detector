@@ -1,112 +1,106 @@
 # 🍎 Fruit Detector
 
-**Is it fresh or rotten?** Upload a photo of a fruit or vegetable and a fine-tuned
-CNN gives a verdict with a calibrated confidence score, or says *"not sure"*
-when it doesn't know.
+**Is it fresh or rotten?** Upload a photo of a fruit or vegetable and get a verdict
+with a confidence score. It says *"not sure"* when it doesn't know, and *"that's not
+a fruit"* when it isn't one.
 
 **Live demo:** https://fruit-detector.streamlit.app
 
 ![screenshot](docs/screenshot.png)
 
-## Why this project is interesting: generalising to fruits it has never seen
+## How it works
 
-The first version scored 100% validation accuracy and was still useless on new
-fruits. Three reasons:
+The app uses **CLIP** (OpenCLIP ViT-B/32, trained on 400 million captioned images).
+For 64 kinds of produce it compares the photo with captions like *"a photo of a
+fresh watermelon"* and *"a photo of a rotten watermelon"*. A single softmax over all
+128 captions says both what the produce probably is and how much of the vote went to
+"rotten". A few extra captions (people, pets, screenshots...) catch photos that aren't
+produce at all. Nothing is trained on our photos, which is exactly why it generalises.
 
-1. **7 training images.** A 2-image validation set can't detect overfitting.
-2. **A background shortcut.** Every *fresh* photo was on a white studio
-   background and every *rotten* one on grey or checkerboard, so the model could
-   score perfectly just by checking the background.
-3. **Validating on the same fruits it trained on.** A score on familiar fruits
-   says nothing about an unfamiliar one.
+## The interesting part: three versions, and what each one got wrong
 
-The rebuild targets *generalisation*, not memorisation:
-
-| Change | Why it helps |
-| --- | --- |
-| ~14k real photos (apple, banana, orange, strawberry) from public datasets | enough variety to learn what rot looks like |
-| **Leave-one-fruit-out validation** | the score answers "can it judge a fruit it never saw?" |
-| Balanced sampling per (fruit, label) | fruit identity carries no label information, so the model must learn mould, bruising and decay |
-| Strong augmentation (crops, flips, rotation, lighting, blur, erasing) | breaks shortcuts tied to framing, background and camera |
-| Two-stage transfer learning (head → top of backbone) at a low LR, label smoothing, weight decay, early stopping on val loss | stops it over-committing to the training fruits |
-| Frozen BatchNorm kept in eval mode | the old code let BN statistics drift toward 7 screenshots |
-| Temperature scaling + "not sure" below 70% confidence | honest confidence instead of confident wrong answers |
-
-## Results
-
-**Leave-one-fruit-out:** train on three fruits, then test on the fourth, which the
-model has never seen (balanced accuracy, 800 test images per fruit; 231 for strawberry):
-
-| Fruit held out | Old model (v1) | Fruit Detector |
+| Version | Idea | What broke it |
 | --- | --- | --- |
-| apple | 61.8% | **88.8%** |
-| banana | 78.4% | **93.9%** |
-| orange | 62.1% | **89.6%** |
-| strawberry | 62.7% | **90.8%** |
-| **mean** | 66.3% | **90.8%** |
+| v1 | ResNet18 fine-tuned on 7 screenshots | Learned the **background** (fresh on white, rotten on grey). Its "best" checkpoint scored 50% on its own validation set. |
+| v2 | EfficientNet-B0 fine-tuned on 14k photos of 4 fruits, with fruit-held-out validation, balanced sampling, strong augmentation, calibration | 91% on held-out *fruits*, but called fresh **potatoes, beetroot, ginger and a cut watermelon rotten**. With four fruits as its only fresh examples, it learned "brown / dark / irregular = rotten". |
+| **v3** | **CLIP zero-shot, per-produce prompts** | Two misses in 71 test photos (a subtly mouldy lemon, a tomato with black spots). |
 
-**Brand-new fruit types.** These 11 web photos include cherry, grapes, mango, pineapple,
-raspberry, pear and tomato, none of which are in the training data: **11 / 11 correct**
-(the v1 model got 9 / 11 even though 7 of them were its *training* images).
+### Results on 71 real photos the model never saw
 
-**Background shortcut check.** The 6 fresh photos were re-composited onto the grey,
-checkerboard and dark backgrounds the rotten photos use: **18 / 18 still judged fresh**,
-so the model looks at the fruit, not the backdrop.
+Reproduce with `python3 scripts/evaluate.py` (downloads the test photos from pinned repos).
 
-Backbone comparison (frozen features + logistic regression, mean balanced accuracy on
-the held-out fruit) used to pick the architecture: ResNet18 72%, ResNet50 76%,
-EfficientNet-B3 81%, **EfficientNet-B0 81%**, MobileNetV3 83%. EfficientNet-B0 was
-chosen for accuracy per megabyte (16 MB checkpoint, fast on CPU).
+| Test set | v2 EfficientNet | **v3 CLIP** |
+| --- | --- | --- |
+| 34 fresh fruits & vegetables, many cut (watermelon slice, pomegranate, kiwi, beetroot...) | 21 / 34 | **34 / 34** |
+| 25 fresh *and* rotten, mostly other types (lemon, mango, tamarillo, lulo, potato, tomato...) | 15 / 25 | **24 / 25** |
+| 12 app samples | 11 / 12 | 11 / 12 |
+| **Total** | 47 / 71 (66%) | **69 / 71 (97%)** |
 
-_Caveat: in the leave-one-fruit-out runs, early stopping also watched the held-out
-fruit, so those numbers are slightly optimistic. The 11-photo and background tests
-were never used for any training decision._
+On the 4,000-photo apple / banana / orange / strawberry test set, CLIP with no training
+gets **91.2%** balanced accuracy, about the same as v2's 90.8% leave-one-fruit-out score.
+None of the 394 real produce photos checked were wrongly refused as "not a fruit"; all
+6 non-produce test images (screenshots, a document, landscapes) were.
+
+### Things I tried that didn't work (also worth knowing)
+
+- **More fresh variety for v2** (3k Fruits-360 images of 100+ types): no gain on real
+  photos, worse rot detection. Those are 100x100 studio shots on white, so the model
+  learned *"studio photo = fresh"*, just a new shortcut.
+- **Training a classifier on CLIP features** using our four fruits: it re-learned v2's
+  bias (21/36 on fresh produce).
+- **Extra "dark spots / mould" prompts**: fixed the tomato but broke four fresh photos,
+  so the original prompts stayed.
+
+v2's leave-one-fruit-out numbers, backbone comparison and training commands are in
+[`docs/training_log.md`](docs/training_log.md).
 
 ## Run it locally
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-python3 scripts/download_data.py      # ~2 GB of public images -> data/<fruit>/<fresh|rotten>/
-python3 src/train.py --cv             # leave-one-fruit-out report (+ suggested --temperature)
-python3 src/train.py --temperature 0.55   # final model -> checkpoints/best_model.pth
-python3 src/inference.py samples/     # score the sample photos from the terminal
-streamlit run app.py
+streamlit run app.py                          # the app
+python3 src/clip_detector.py samples/         # score photos from the terminal
+python3 scripts/evaluate.py                   # reproduce the 71-photo results
 ```
 
-Training uses an Apple-Silicon GPU (MPS) or CUDA automatically when one is available.
+Rebuild the CLIP files (`checkpoints/clip_*`) from the public checkpoint with
+`python3 scripts/export_clip.py`. To retrain the v2 EfficientNet:
+`python3 scripts/download_data.py && python3 src/train.py --cv`.
 
 ## Project layout
 
 ```
-app.py                  Streamlit app: upload or pick a sample, get a verdict
-src/ui.py               pixel-art look: colours, fonts, window chrome, sprites, verdict card
-src/dataset.py          data layout, fruit-held-out splits, balanced sampler, augmentation
-src/model.py            EfficientNet-B0 backbone + dropout/linear head (timm)
-src/train.py            two-stage training, early stopping, temperature calibration
-src/inference.py        load_model / predict_image shared by CLI and app
-scripts/download_data.py  rebuilds the dataset from public GitHub mirrors
+app.py                    Streamlit app (two-column pixel-art "desktop")
+src/clip_detector.py      v3: CLIP image encoder + pre-encoded fresh/rotten prompts
+src/ui.py                 pixel-art look: colours, fonts, windows, sprites, verdict card
+src/dataset.py, model.py, train.py, inference.py    v2 EfficientNet pipeline
+scripts/export_clip.py    builds checkpoints/clip_* from the OpenCLIP release
+scripts/evaluate.py       71-photo test on images the model never saw
+scripts/download_data.py  v2 training data from public GitHub mirrors
 scripts/make_background.py  draws the pixel landscape -> assets/background.png
-static/fonts/           Pixelify Sans + VT323 (served by Streamlit, no CDN needed)
-samples/                photos used as one-click examples in the app
-checkpoints/best_model.pth  trained weights used by the deployed app
+checkpoints/              CLIP encoder (2 fp16 shards < 100 MB) + prompts; v2 weights
+samples/                  one-click examples in the app
+static/fonts/             Pixelify Sans + VT323 (served by Streamlit, no CDN)
 ```
 
-## Data credits
+## Credits
 
-- *Fruits fresh and rotten for classification* (Sriram Reddy Kalluri, Kaggle), via the
-  [Bangkit-JKT2-D mirror](https://github.com/Bangkit-JKT2-D/fruits-fresh-rotten-classification)
-- Strawberry / apple / banana images from
-  [1RaghavM/Fruit-Freshness-Classification](https://github.com/1RaghavM/Fruit-Freshness-Classification)
-- Pretrained backbone weights: [timm](https://github.com/huggingface/pytorch-image-models)
+- Model: [OpenCLIP](https://github.com/mlfoundations/open_clip) ViT-B/32 (LAION-400M), MIT licence
+- v2 data: *Fruits fresh and rotten for classification* (Sriram Reddy Kalluri, Kaggle) via the
+  [Bangkit-JKT2-D mirror](https://github.com/Bangkit-JKT2-D/fruits-fresh-rotten-classification), and
+  [1RaghavM/Fruit-Freshness-Classification](https://github.com/1RaghavM/Fruit-Freshness-Classification);
+  backbone weights from [timm](https://github.com/huggingface/pytorch-image-models)
+- Test photos: [junaiddbz/agrivision-produce-classifier](https://github.com/junaiddbz/agrivision-produce-classifier),
+  [dhieu0901/Fresh-and-Rotten-Fruit-Classification](https://github.com/dhieu0901/Fresh-and-Rotten-Fruit-Classification),
+  [Jayasree478/FoodSafe-AI](https://github.com/Jayasree478/FoodSafe-AI)
 - Fonts: [Pixelify Sans](https://github.com/google/fonts/tree/main/ofl/pixelifysans) and
   [VT323](https://github.com/google/fonts/tree/main/ofl/vt323), SIL Open Font License (copies in `static/fonts/`)
-- Pixel-art background and sprites: original, drawn in code (`scripts/make_background.py`, `src/ui.py`)
+- Pixel-art background and sprites: original, drawn in code
 
 ## Limitations
 
-Trained on four fruit types photographed mostly against plain backgrounds. It
-does best on a single, well-lit fruit filling most of the frame. Cluttered scenes,
-cut fruit and produce that is *meant* to look dark (e.g. ripe plantains, aged
-cheese) can fool it, which is why it reports when it's unsure.
+Best on one piece of produce filling most of a well-lit photo. Very early or subtle
+rot (a slightly soft lemon, a few dark spots) can read as fresh, and rotten
+strawberries are its weakest case (59% caught on the 4-fruit test set). It reports
+"not sure" below 70% confidence rather than guessing.

@@ -3,8 +3,8 @@ app.py
 ------
 Fruit Detector's interface: upload a photo of a fruit or vegetable and get
 a fresh / rotten verdict with a confidence score, or an honest "not sure".
-The pixel-art look lives in src/ui.py; predictions come from the same
-predict_image() used on the command line in src/inference.py.
+The pixel-art look lives in src/ui.py; predictions come from CLIP via
+src/clip_detector.py (also runnable from the terminal).
 
 Run from the project root:
     streamlit run app.py
@@ -19,30 +19,39 @@ from PIL import Image
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 import ui  # noqa: E402
-from inference import load_model, predict_image, verdict  # noqa: E402
+import clip_detector  # noqa: E402
+from clip_detector import UNSURE_BELOW  # noqa: E402
 
-CHECKPOINT_PATH = os.path.join(ROOT, "checkpoints", "best_model.pth")
+CHECKPOINT_PATH = os.path.join(ROOT, "checkpoints", "clip_prompts.pt")
 SAMPLES_DIR = os.path.join(ROOT, "samples")
 REPO_URL = "https://github.com/g-reenmamba/fruit-detector"
-ARCH_LABELS = {"efficientnet_b0": "EfficientNet-B0", "resnet18": "ResNet18", "resnet50": "ResNet50",
-               "mobilenetv3_large_100": "MobileNetV3", "efficientnet_b3": "EfficientNet-B3"}
 
 st.set_page_config(page_title="Fruit Detector", page_icon="🍎", layout="wide")
 st.markdown(ui.css(), unsafe_allow_html=True)
 st.markdown(ui.hero(), unsafe_allow_html=True)
 
 if not os.path.exists(CHECKPOINT_PATH):
-    st.error("No trained model yet. Run `python3 scripts/download_data.py`, then "
-             "`python3 src/train.py`, then restart the app.")
+    st.error("Model files are missing. Run `python3 scripts/export_clip.py`, then restart the app.")
     st.stop()
 
 
 @st.cache_resource
-def get_model():
-    return load_model(CHECKPOINT_PATH)
+def get_detector():
+    return clip_detector.load_detector()
 
 
-model, classes, device = get_model()
+detector = get_detector()
+
+
+def judge(image):
+    r = clip_detector.analyse(image, detector)
+    if r["not_produce"] > clip_detector.NOT_PRODUCE_ABOVE:
+        return dict(label="not_produce", pred=None, conf=r["not_produce"], probs={}, guess=None)
+    pred = "rotten" if r["rotten"] > 0.5 else "fresh"
+    conf = max(r["rotten"], r["fresh"])
+    return dict(label=pred if conf >= UNSURE_BELOW else "unsure", pred=pred, conf=conf,
+                probs={"fresh": r["fresh"], "rotten": r["rotten"]},
+                guess=r["produce"] if r["produce_conf"] >= 0.3 else None)
 
 sample_files = sorted(
     f for f in os.listdir(SAMPLES_DIR) if f.lower().endswith((".png", ".jpg", ".jpeg"))
@@ -82,20 +91,19 @@ with left, st.container(key="win_main"):
         st.image(image, width="stretch")
         if st.button("Check freshness"):
             with st.spinner("Looking closely..."):
-                pred_class, confidence, all_probs = predict_image(image, model, classes, device)
-            # keep the result until a different photo is chosen, so it survives reruns
-            st.session_state.result = dict(key=image_key, pred=pred_class, conf=confidence, probs=all_probs)
+                # keep the result until a different photo is chosen, so it survives reruns
+                st.session_state.result = dict(key=image_key, **judge(image))
 
 with right:
     with st.container(key="win_verdict"):
         st.markdown(ui.titlebar("verdict.txt"), unsafe_allow_html=True)
         r = st.session_state.get("result")
         if r and image_key and r["key"] == image_key:
-            st.markdown(ui.verdict_card(verdict(r["pred"], r["conf"]), r["pred"], r["conf"], r["probs"]),
+            st.markdown(ui.verdict_card(r["label"], r["pred"], r["conf"], r["probs"], r["guess"]),
                         unsafe_allow_html=True)
         else:
             st.markdown(ui.waiting(), unsafe_allow_html=True)
 
     with st.container(key="win_about"):
         st.markdown(ui.titlebar("about.txt"), unsafe_allow_html=True)
-        st.markdown(ui.about(ARCH_LABELS.get(model.arch, "CNN"), REPO_URL), unsafe_allow_html=True)
+        st.markdown(ui.about(REPO_URL, len(detector["produce"])), unsafe_allow_html=True)

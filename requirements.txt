@@ -5,6 +5,7 @@
 torch==2.13.0
 torchvision==0.28.0
 timm==1.0.30
+open_clip_torch==3.3.0   # CLIP model definition (weights ship in checkpoints/)
 streamlit==1.62.0
 pillow
 numpy

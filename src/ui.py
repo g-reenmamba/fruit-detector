@@ -242,6 +242,8 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .fd-scores {{ display: grid; grid-template-columns: auto 1fr auto; gap: 8px 12px; align-items: center; margin-top: 16px; }}
 .fd-scores .fd-name {{ font-family: var(--display); font-size: 18px; }}
 .fd-scores .fd-val {{ font-size: 21px; min-width: 52px; text-align: right; }}
+.fd-guess {{ margin: 14px 0 0; font-size: 21px; }}
+.fd-guess b {{ font-family: var(--display); font-weight: 700; font-size: 20px; }}
 
 /* empty states */
 .fd-slot, .fd-waiting {{
@@ -298,8 +300,11 @@ def _cells(p, kind):
     return f'<div class="fd-cells {kind}" role="img" aria-label="{kind} {int(p * 100)}%">{cells}</div>'
 
 
-def verdict_card(label, pred_class, confidence, all_probs):
+def verdict_card(label, pred_class, confidence, all_probs, guess=None):
     pct = _pct(confidence)
+    if label == "not_produce":
+        return (f'<div class="fd-verdict unsure" role="status">{ICON_UNSURE}<h3>That\'s not a fruit!</h3>'
+                '<p>This doesn\'t look like a fruit or vegetable. Try a photo of one piece of produce.</p></div>')
     if label == "fresh":
         icon, title, line = ICON_FRESH, "Looks fresh!", f"Good to eat, {pct} sure."
     elif label == "rotten":
@@ -313,8 +318,9 @@ def verdict_card(label, pred_class, confidence, all_probs):
         f'<span class="fd-val">{"<1" if p < 0.01 else int(p * 100)}%</span>'
         for cls, p in all_probs.items()
     )
+    guess_html = f'<p class="fd-guess">Looks like: <b>{guess}</b></p>' if guess else ""
     return (f'<div class="fd-verdict {label}" role="status">{icon}<h3>{title}</h3><p>{line}</p></div>'
-            f'<div class="fd-scores">{rows}</div>')
+            f'<div class="fd-scores">{rows}</div>{guess_html}')
 
 
 def photo_slot():
@@ -327,12 +333,11 @@ def waiting():
             '<p>Upload a photo or pick a sample, then press Check freshness.</p></div>')
 
 
-def about(arch_label, repo_url):
+def about(repo_url, n_produce):
     return ('<ul class="fd-about">'
-            '<li><span><b>91% correct</b> on fruit types it never saw in training.</span></li>'
-            '<li><span>Trained on <b>14,101 photos</b> of fresh and rotten apples, bananas, '
-            'oranges and strawberries.</span></li>'
-            '<li><span>Says <b>not sure</b> instead of guessing when it is under 70% confident.</span></li>'
-            f'<li><span>A fine-tuned {arch_label} in PyTorch. '
-            f'<a href="{repo_url}" target="_blank" rel="noopener">See how it was built on GitHub</a></span></li>'
+            f'<li><span>Knows what fresh and rotten look like for <b>{n_produce} kinds</b> of fruit and veg.</span></li>'
+            '<li><span>Got <b>69 of 71</b> real test photos right, fresh and rotten, whole and cut.</span></li>'
+            '<li><span>Says <b>not sure</b> under 70% confidence, and spots photos that aren\'t produce.</span></li>'
+            '<li><span>Uses CLIP, an AI model that learned from 400 million captioned images, in PyTorch. '
+            f'<a href="{repo_url}" target="_blank" rel="noopener">How it was built, and what came first</a></span></li>'
             '</ul>')
