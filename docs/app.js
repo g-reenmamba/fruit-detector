@@ -34,8 +34,8 @@
   // ---------- elements & state ----------
   const $ = id => document.getElementById(id);
   const fileInput = $("file"), dropzone = $("dropzone"), select = $("sample"), photo = $("photo"),
-    checkBtn = $("check"), verdictEl = $("verdict"), fileHint = $("file-hint");
-  let session = null, prompts = null, currentImage = null, busy = false, loadError = null;
+    checkBtn = $("check"), verdictEl = $("verdict"), fileHint = $("file-hint"), infoEl = $("info");
+  let session = null, prompts = null, currentImage = null, busy = false, loadError = null, produceInfo = {};
 
   const cells = (p, kind) => `<div class="cells ${kind}" role="img" aria-label="${kind} ${Math.floor(p * 100)}%">` +
     Array.from({ length: 10 }, (_, i) => `<div class="cell${i < Math.round(p * 10) ? " on" : ""}"></div>`).join("") + "</div>";
@@ -54,6 +54,31 @@
     photo.className = "photo empty";
     photo.innerHTML = `<span class="ghost">${sprite(APPLE_ROWS, APPLE_PAL, 5)}</span><p>Your fruit shows up here.</p>`;
   }
+  // ---------- fruit_info.txt: facts + advice for the identified produce ----------
+  // USDA rule for mouldy produce: firm items can be trimmed, soft ones should go.
+  const MOULD_FIRM = "Firm produce: if it's just a small mouldy spot, cut away at least 1 inch (2.5 cm) around and below it and use the rest. If it's soft, slimy or mouldy all over, throw it out.";
+  const MOULD_SOFT = "Soft produce: throw it away. Mould can spread below the surface where you can't see it. Compost it if you can.";
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const facts = rows => `<dl class="facts">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+  function renderInfo(label, guess) {
+    if (!label) {
+      infoEl.innerHTML = `<div class="info-empty"><span class="ghost">${sprite(APPLE_ROWS, APPLE_PAL, 5)}</span><p>Check a fruit and facts about it show up here.</p></div>`;
+    } else if (label === "not_produce") {
+      infoEl.innerHTML = `<div class="info-empty"><p>No fruit or vegetable spotted, so there's nothing to show yet.</p></div>`;
+    } else if (!guess || !produceInfo[guess]) {
+      infoEl.innerHTML = `<h4 class="info-name">Couldn't tell which one this is</h4><p class="fact">So here is the general rule for mouldy produce:</p>` +
+        facts([["Firm, like carrots or peppers", MOULD_FIRM.split(": ").slice(1).join(": ")],
+               ["Soft, like berries or tomatoes", MOULD_SOFT.split(": ").slice(1).join(": ")]]);
+    } else {
+      const d = produceInfo[guess];
+      let rows = [["Good source of", d.good_for]];
+      if (label === "rotten") rows.push(["What to do now", d.firm ? MOULD_FIRM : MOULD_SOFT], ["Signs it's going bad", d.spoil]);
+      else if (label === "unsure") rows.push(["Check it yourself", d.spoil], ["How to store it", d.store], ["Keeps for", d.keeps]);
+      else rows.push(["How to store it", d.store], ["Keeps for", d.keeps]);
+      infoEl.innerHTML = `<h4 class="info-name">${esc(guess[0].toUpperCase() + guess.slice(1))}</h4><p class="fact">${esc(d.fact)}</p>` + facts(rows);
+    }
+  }
+
   function refreshButton() {
     checkBtn.disabled = !currentImage || !session || busy;
     checkBtn.textContent = busy ? "Looking closely..." : (!session && !loadError ? "Loading model..." : "Check freshness");
@@ -92,10 +117,12 @@
   async function loadModel() {
     showLoading(0, 89e6);
     try {
-      const [meta, bin] = await Promise.all([
+      const [meta, bin, info] = await Promise.all([
         fetch("model/prompts.json").then(r => r.json()),
         fetch("model/prompts.bin").then(r => r.arrayBuffer()),
+        fetch("model/produce_info.json").then(r => r.json()).catch(() => ({ produce: {} })),
       ]);
+      produceInfo = info.produce || {};
       prompts = { ...meta, vecs: new Float32Array(bin) };
       // absolute URL: the runtime loads its .mjs with import(), which rejects bare relative paths
       ort.env.wasm.wasmPaths = new URL("vendor/ort/", document.baseURI).href;
@@ -177,6 +204,7 @@
     if (r.notProduce > prompts.not_produce_above) {
       verdictEl.innerHTML = `<div class="verdict not_produce">${ICON.unsure}<h3>That's not a fruit!</h3>
         <p>This doesn't look like a fruit or vegetable. Try a photo of one piece of produce.</p></div>`;
+      renderInfo("not_produce");
       return;
     }
     const pred = r.rotten > 0.5 ? "rotten" : "fresh", conf = Math.max(r.rotten, r.fresh);
@@ -192,6 +220,7 @@
         <span class="n">Fresh</span>${cells(r.fresh, "fresh")}<span class="v">${val(r.fresh)}</span>
         <span class="n">Rotten</span>${cells(r.rotten, "rotten")}<span class="v">${val(r.rotten)}</span>
       </div>` + (r.produceConf >= 0.3 ? `<p class="guess">Looks like: <b>${r.produce}</b></p>` : "");
+    renderInfo(label, r.produceConf >= 0.3 ? r.produce : null);
   }
 
   async function check() {
@@ -213,6 +242,7 @@
     const img = new Image();
     img.onload = () => {
       currentImage = img;
+      renderInfo(null);
       photo.className = "photo"; photo.innerHTML = "";
       img.className = "photo-img"; img.alt = name ? `Photo: ${name}` : "Your photo";
       photo.appendChild(img);
@@ -247,6 +277,7 @@
   checkBtn.addEventListener("click", check);
 
   showEmptyPhoto();
+  renderInfo(null);
   refreshButton();
   loadModel();
 })();

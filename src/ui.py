@@ -10,6 +10,7 @@ verdicts, VT323 (pixel terminal) for everything else.
 """
 
 import base64
+import html
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -120,7 +121,7 @@ def css():
 header[data-testid="stHeader"] {{ background: transparent; }}
 .block-container {{ max-width: 1120px; padding: 2.2rem 24px 3rem; }}
 [data-testid="stHorizontalBlock"] {{ align-items: flex-start; }}
-.st-key-win_about {{ margin-top: 14px; }}
+.st-key-win_info {{ margin-top: 14px; }}
 
 .stApp p, .stApp label, .stApp li, .stApp input, .stApp button, .stApp small,
 .stApp [data-testid="stMarkdownContainer"], [role="listbox"] [role="option"] {{
@@ -255,7 +256,7 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .fd-slot p, .fd-waiting p {{ margin: 0; color: #6B6E9C; max-width: 30ch; line-height: 1.15; }}
 .fd-ghost {{ opacity: 0.35; }}
 
-/* about window: rules note, then facts */
+/* fruit_info window: rules note, then facts about the identified produce */
 .fd-rules {{
   background: #FBF0CC; border: 3px solid var(--ink); box-shadow: 4px 4px 0 rgba(46, 47, 91, 0.35);
   padding: 10px 14px; margin: 2px 0 16px;
@@ -264,11 +265,17 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .fd-rules .fd-rules-title {{ font-family: var(--display); font-weight: 700; font-size: 20px; margin-bottom: 4px; }}
 .fd-rules b {{ font-family: var(--display); font-weight: 700; font-size: 20px; }}
 /* about window */
-.fd-about {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }}
-.fd-about li {{ display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: baseline; line-height: 1.15; }}
-.fd-about li::before {{ content: ""; width: 10px; height: 10px; background: var(--titlebar); box-shadow: 2px 2px 0 var(--frame); }}
-.fd-about b {{ font-family: var(--display); font-weight: 700; font-size: 20px; }}
-.fd-about a {{ color: var(--frame); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }}
+.fd-info-name {{ font-family: var(--display) !important; font-weight: 700; font-size: 28px; line-height: 1; margin: 0 0 6px; padding: 0; color: var(--ink); }}
+.fd-fact {{ margin: 0 0 12px; line-height: 1.15; }}
+.fd-facts {{ margin: 0; display: grid; gap: 4px; }}
+.fd-facts dt {{ font-family: var(--display); font-weight: 600; font-size: 18px; display: flex; align-items: center; gap: 8px; }}
+.fd-facts dt::before {{ content: ""; width: 10px; height: 10px; flex: none; background: var(--titlebar); box-shadow: 2px 2px 0 var(--frame); }}
+.fd-facts dd {{ margin: 0 0 8px 18px; line-height: 1.15; }}
+.fd-info-empty {{ display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+  border: 4px dashed #A9AFD6; background: #FFFFFF; padding: 22px 16px; color: #6B6E9C; }}
+.fd-info-empty p {{ margin: 0; color: #6B6E9C; max-width: 32ch; line-height: 1.15; }}
+.fd-note {{ margin: 14px 0 0; font-size: 18px; color: #6B6E9C; line-height: 1.15; }}
+.fd-note a {{ color: var(--frame); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }}
 
 @media (max-width: 640px) {{
   [data-testid="stHorizontalBlock"] {{ row-gap: 24px; }}  /* columns stack on phones */
@@ -341,13 +348,49 @@ def waiting():
             '<p>Upload a photo or pick a sample, then press Check freshness.</p></div>')
 
 
-def about(repo_url, n_produce):
-    return ('<div class="fd-rules" role="note"><p class="fd-rules-title">Rules</p>'
-            '<p>Upload <b>one</b> fruit or vegetable per photo. A photo with several can give wrong results.</p></div>'
-            '<ul class="fd-about">'
-            f'<li><span>Knows what fresh and rotten look like for <b>{n_produce} kinds</b> of fruit and veg.</span></li>'
-            '<li><span>Got <b>69 of 71</b> real test photos right, fresh and rotten, whole and cut.</span></li>'
-            '<li><span>Says <b>not sure</b> under 70% confidence, and spots photos that aren\'t produce.</span></li>'
-            '<li><span>Uses CLIP, an AI model that learned from 400 million captioned images, in PyTorch. '
-            f'<a href="{repo_url}" target="_blank" rel="noopener">How it was built, and what came first</a></span></li>'
-            '</ul>')
+RULES = ('<div class="fd-rules" role="note"><p class="fd-rules-title">Rules</p>'
+         '<p>Upload <b>one</b> fruit or vegetable per photo. A photo with several can give wrong results.</p></div>')
+
+# USDA rule for mouldy produce: firm items can be trimmed, soft ones should go.
+MOULD_FIRM = ("Firm produce: if it's just a small mouldy spot, cut away at least 1 inch (2.5 cm) around and "
+              "below it and use the rest. If it's soft, slimy or mouldy all over, throw it out.")
+MOULD_SOFT = ("Soft produce: throw it away. Mould can spread below the surface where you can't see it. "
+              "Compost it if you can.")
+
+
+def _rows(rows):
+    return '<dl class="fd-facts">' + "".join(f"<dt>{k}</dt><dd>{html.escape(v)}</dd>" for k, v in rows) + "</dl>"
+
+
+def fruit_info(result, info, repo_url):
+    """
+    The fruit_info.txt window: the upload rule, then facts and advice about
+    whatever produce was identified, tailored to the verdict.
+    result: None before a check, else the app's result dict (label, guess, ...).
+    info:   the "produce" table from src/produce_info.json.
+    """
+    footer = ('<p class="fd-note">Storage times are rough guides. When in doubt, throw it out. '
+              f'<a href="{repo_url}" target="_blank" rel="noopener">How this app works</a></p>')
+    if result is None:
+        body = (f'<div class="fd-info-empty"><span class="fd-ghost">{APPLE}</span>'
+                '<p>Check a fruit and facts about it show up here.</p></div>')
+    elif result["label"] == "not_produce":
+        body = '<div class="fd-info-empty"><p>No fruit or vegetable spotted, so there\'s nothing to show yet.</p></div>'
+    elif not result.get("guess") or result["guess"] not in info:
+        body = ('<h4 class="fd-info-name">Couldn\'t tell which one this is</h4>'
+                '<p class="fd-fact">So here is the general rule for mouldy produce:</p>'
+                + _rows([("Firm, like carrots or peppers", MOULD_FIRM.split(": ", 1)[1]),
+                         ("Soft, like berries or tomatoes", MOULD_SOFT.split(": ", 1)[1])]))
+    else:
+        name, d = result["guess"], info[result["guess"]]
+        rows = [("Good source of", d["good_for"])]
+        if result["label"] == "rotten":
+            rows += [("What to do now", MOULD_FIRM if d["firm"] else MOULD_SOFT),
+                     ("Signs it's going bad", d["spoil"])]
+        elif result["label"] == "unsure":
+            rows += [("Check it yourself", d["spoil"]), ("How to store it", d["store"]), ("Keeps for", d["keeps"])]
+        else:
+            rows += [("How to store it", d["store"]), ("Keeps for", d["keeps"])]
+        body = (f'<h4 class="fd-info-name">{html.escape(name.capitalize())}</h4>'
+                f'<p class="fd-fact">{html.escape(d["fact"])}</p>' + _rows(rows))
+    return RULES + f'<div class="fd-info" aria-live="polite">{body}</div>' + footer

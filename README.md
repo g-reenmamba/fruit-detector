@@ -20,6 +20,12 @@ fresh watermelon"* and *"a photo of a rotten watermelon"*. A single softmax over
 "rotten". A few extra captions (people, pets, screenshots...) catch photos that aren't
 produce at all. Nothing is trained on our photos, which is exactly why it generalises.
 
+After a verdict, the **fruit_info.txt** window tells you about the produce it identified:
+a fun fact, what it's a good source of, and advice that depends on the verdict, such as
+how to store it, how long it keeps, or what to do with it if it's mouldy. The mould advice
+follows USDA guidance: trim firm produce (at least 1 inch around the spot), throw out
+soft produce. All 64 entries live in `src/produce_info.json`.
+
 **Two ways to run it.** The Streamlit app (`app.py`) runs CLIP in PyTorch on a server.
 The GitHub Pages site (`docs/`) runs the same image encoder in the visitor's browser
 with ONNX Runtime Web: an 89 MB model, downloaded once and then cached, with the
@@ -108,6 +114,7 @@ static/fonts/             Pixelify Sans + VT323 (served by Streamlit, no CDN)
 - Test photos: [junaiddbz/agrivision-produce-classifier](https://github.com/junaiddbz/agrivision-produce-classifier),
   [dhieu0901/Fresh-and-Rotten-Fruit-Classification](https://github.com/dhieu0901/Fresh-and-Rotten-Fruit-Classification),
   [Jayasree478/FoodSafe-AI](https://github.com/Jayasree478/FoodSafe-AI)
+- Mould advice: USDA guidance on mouldy food, via [NC State Extension](https://brunswick.ces.ncsu.edu/news/moldy-foods-use-or-pitch/)
 - Fonts: [Pixelify Sans](https://github.com/google/fonts/tree/main/ofl/pixelifysans) and
   [VT323](https://github.com/google/fonts/tree/main/ofl/vt323), SIL Open Font License (copies in `static/fonts/`)
 - Pixel-art background and sprites: original, drawn in code

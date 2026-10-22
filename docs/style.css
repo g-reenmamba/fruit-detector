@@ -129,16 +129,24 @@ select:focus-visible { outline: 3px dashed var(--frame); outline-offset: 4px; }
 .cells.rotten .on { background: var(--rotten); box-shadow: inset 0 3px 0 #E6B9D6; }
 .cells.load .on { background: #AFC0F0; box-shadow: inset 0 3px 0 #DCE3FA; }
 .guess { margin: 14px 0 0; }
-.guess b, .about b, .rules b { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.guess b, .rules b { font-family: var(--display); font-weight: 700; font-size: 20px; }
 
-/* ---------- about ---------- */
+/* ---------- rules note (fruit_info.txt) ---------- */
 .rules { background: #FBF0CC; border: 3px solid var(--ink); box-shadow: 4px 4px 0 rgba(46, 47, 91, 0.35);
   padding: 10px 14px; }
 .rules p { margin: 0; line-height: 1.15; }
 .rules .t { font-family: var(--display); font-weight: 700; font-size: 20px; margin-bottom: 4px; }
-.about { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-.about li { display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: baseline; line-height: 1.15; }
-.about li::before { content: ""; width: 10px; height: 10px; background: var(--titlebar); box-shadow: 2px 2px 0 var(--frame); }
+/* fruit_info.txt: facts and advice about the identified produce */
+.info-name { margin: 0 0 6px; font-family: var(--display); font-weight: 700; font-size: 28px; line-height: 1; }
+.fact { margin: 0 0 12px; line-height: 1.15; }
+.facts { margin: 0; display: grid; gap: 4px; }
+.facts dt { font-family: var(--display); font-weight: 600; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.facts dt::before { content: ""; width: 10px; height: 10px; flex: none; background: var(--titlebar); box-shadow: 2px 2px 0 var(--frame); }
+.facts dd { margin: 0 0 8px 18px; line-height: 1.15; }
+.info-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+  border: 4px dashed #A9AFD6; background: #FFFFFF; padding: 22px 16px; }
+.info-empty p { margin: 0; color: var(--muted); max-width: 32ch; line-height: 1.15; }
+.note { margin: 14px 0 0; font-size: 18px; color: var(--muted); line-height: 1.15; }
 a { color: var(--frame); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 a:focus-visible { outline: 3px dashed var(--frame); outline-offset: 3px; }
 

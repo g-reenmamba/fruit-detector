@@ -117,6 +117,7 @@ def main():
         shutil.copytree(os.path.join(ROOT, sub), dst)
     os.makedirs(os.path.join(DOCS, "img"), exist_ok=True)
     shutil.copy(os.path.join(ROOT, "assets", "background.png"), os.path.join(DOCS, "img", "background.png"))
+    shutil.copy(os.path.join(ROOT, "src", "produce_info.json"), os.path.join(DOCS, "model", "produce_info.json"))
     open(os.path.join(DOCS, ".nojekyll"), "w").close()   # serve files as-is, no Jekyll
     size = os.path.getsize(os.path.join(DOCS, "model", "clip_visual_w8.onnx")) / 1e6
     print(f"built docs/ (model {size:.1f} MB, {len(det['produce'])} produce types)")

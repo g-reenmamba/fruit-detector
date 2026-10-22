@@ -19,12 +19,16 @@ from PIL import Image
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 import ui  # noqa: E402
+import json  # noqa: E402
+
 import clip_detector  # noqa: E402
 from clip_detector import UNSURE_BELOW  # noqa: E402
 
 CHECKPOINT_PATH = os.path.join(ROOT, "checkpoints", "clip_prompts.pt")
 SAMPLES_DIR = os.path.join(ROOT, "samples")
 REPO_URL = "https://github.com/g-reenmamba/fruit-detector"
+with open(os.path.join(ROOT, "src", "produce_info.json"), encoding="utf-8") as fh:
+    PRODUCE_INFO = json.load(fh)["produce"]   # facts + storage / spoilage advice per produce type
 
 st.set_page_config(page_title="Fruit Detector", page_icon="🍎", layout="wide")
 st.markdown(ui.css(), unsafe_allow_html=True)
@@ -104,6 +108,7 @@ with right:
         else:
             st.markdown(ui.waiting(), unsafe_allow_html=True)
 
-    with st.container(key="win_about"):
-        st.markdown(ui.titlebar("about.txt"), unsafe_allow_html=True)
-        st.markdown(ui.about(REPO_URL, len(detector["produce"])), unsafe_allow_html=True)
+    with st.container(key="win_info"):
+        st.markdown(ui.titlebar("fruit_info.txt"), unsafe_allow_html=True)
+        shown = r if (r and image_key and r["key"] == image_key) else None
+        st.markdown(ui.fruit_info(shown, PRODUCE_INFO, REPO_URL), unsafe_allow_html=True)
