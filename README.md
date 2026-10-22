@@ -4,7 +4,10 @@
 with a confidence score. It says *"not sure"* when it doesn't know, and *"that's not
 a fruit"* when it isn't one.
 
-**Live demo:** https://fruit-detector-jywf8hr9vrvfnj8appppdlxl.streamlit.app
+**Live demo (always on):** https://g-reenmamba.github.io/fruit-detector/
+
+The model runs entirely in your browser, so there's no server to fall asleep. The
+Streamlit version is at https://fruit-detector-jywf8hr9vrvfnj8appppdlxl.streamlit.app
 
 ![screenshot](docs/screenshot.png)
 
@@ -16,6 +19,14 @@ fresh watermelon"* and *"a photo of a rotten watermelon"*. A single softmax over
 128 captions says both what the produce probably is and how much of the vote went to
 "rotten". A few extra captions (people, pets, screenshots...) catch photos that aren't
 produce at all. Nothing is trained on our photos, which is exactly why it generalises.
+
+**Two ways to run it.** The Streamlit app (`app.py`) runs CLIP in PyTorch on a server.
+The GitHub Pages site (`docs/`) runs the same image encoder in the visitor's browser
+with ONNX Runtime Web: an 89 MB model, downloaded once and then cached, with the
+weights stored as 8-bit (one scale per output channel). Standard 8-bit quantization
+dropped the 71-photo test to 65/71, so only the weights are 8-bit and the maths stays
+in full precision: **69/71 in the browser, identical to PyTorch.** Your photo never
+leaves your device.
 
 ## The interesting part: three versions, and what each one got wrong
 
@@ -75,6 +86,8 @@ app.py                    Streamlit app (two-column pixel-art "desktop")
 src/clip_detector.py      v3: CLIP image encoder + pre-encoded fresh/rotten prompts
 src/ui.py                 pixel-art look: colours, fonts, windows, sprites, verdict card
 src/dataset.py, model.py, train.py, inference.py    v2 EfficientNet pipeline
+docs/                     GitHub Pages site: index.html, app.js, style.css, model/, vendor/ort/
+scripts/build_web.py      exports the browser model + prompts into docs/
 scripts/export_clip.py    builds checkpoints/clip_* from the OpenCLIP release
 scripts/evaluate.py       71-photo test on images the model never saw
 scripts/download_data.py  v2 training data from public GitHub mirrors
@@ -87,6 +100,7 @@ static/fonts/             Pixelify Sans + VT323 (served by Streamlit, no CDN)
 ## Credits
 
 - Model: [OpenCLIP](https://github.com/mlfoundations/open_clip) ViT-B/32 (LAION-400M), MIT licence
+- Browser runtime: [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) 1.29.0, MIT licence
 - v2 data: *Fruits fresh and rotten for classification* (Sriram Reddy Kalluri, Kaggle) via the
   [Bangkit-JKT2-D mirror](https://github.com/Bangkit-JKT2-D/fruits-fresh-rotten-classification), and
   [1RaghavM/Fruit-Freshness-Classification](https://github.com/1RaghavM/Fruit-Freshness-Classification);

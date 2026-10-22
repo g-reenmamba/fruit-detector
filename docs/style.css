@@ -1,0 +1,157 @@
+/* Fruit Detector, static (GitHub Pages) edition. Same look as the Streamlit app. */
+
+@font-face { font-family: 'Pixelify Sans'; src: url('fonts/PixelifySans.ttf') format('truetype');
+  font-weight: 400 700; font-display: swap; }
+@font-face { font-family: 'VT323'; src: url('fonts/VT323.ttf') format('truetype');
+  font-weight: 400; font-display: swap; }
+
+:root {
+  --ink: #2E2F5B; --paper: #F3F1FB; --frame: #3D4C7E; --titlebar: #7189BF; --chrome: #CBD3B4;
+  --fresh: #7BC98F; --fresh-dark: #3E8A5A; --rotten: #C07AA8; --rotten-dark: #6E3A63;
+  --unsure: #F2D27A; --unsure-dark: #9A7724; --muted: #6B6E9C;
+  --display: 'Pixelify Sans', 'VT323', monospace;
+  --body: 'VT323', 'Courier New', monospace;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { background: #B9C2EE; }
+body {
+  margin: 0; min-height: 100vh; color: var(--ink);
+  font-family: var(--body); font-size: 21px; line-height: 1.2;
+  background: #B9C2EE url('img/background.png') center bottom / cover no-repeat fixed;
+  image-rendering: pixelated;
+}
+img.photo-img { image-rendering: auto; }
+.page { max-width: 1120px; margin: 0 auto; padding: 36px 24px 48px; }
+
+/* ---------- title ---------- */
+.hero { text-align: center; margin-bottom: 22px; }
+.title {
+  display: inline-flex; align-items: center; gap: 14px; margin: 0;
+  font-family: var(--display); font-weight: 700; font-size: clamp(30px, 8.4vw, 60px); line-height: 1.05;
+  color: #FFFFFF; letter-spacing: 1px;
+  text-shadow: -3px 0 0 var(--ink), 3px 0 0 var(--ink), 0 -3px 0 var(--ink), 0 3px 0 var(--ink),
+    6px 6px 0 rgba(46, 47, 91, 0.45);
+}
+.title svg { flex: none; filter: drop-shadow(4px 4px 0 rgba(46, 47, 91, 0.45)); }
+.tagline {
+  display: inline-block; margin: 12px 0 0; padding: 4px 12px; font-size: 25px; line-height: 1.1;
+  background: rgba(243, 241, 251, 0.85); box-shadow: 3px 3px 0 rgba(46, 47, 91, 0.25);
+}
+
+/* ---------- desktop of windows ---------- */
+.desk { display: grid; grid-template-columns: 1.12fr 1fr; gap: 56px; align-items: start; }
+.stack { display: grid; gap: 30px; }
+.win { background: var(--paper); border: 4px solid var(--frame); box-shadow: 8px 8px 0 rgba(46, 47, 91, 0.35); }
+.titlebar {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px;
+  background: var(--titlebar); border-bottom: 4px solid var(--frame);
+  font-family: var(--display); font-size: 20px; color: #FFFFFF; letter-spacing: 1px;
+}
+.titlebar .name { flex: 1; }
+.winbtn {
+  width: 26px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--chrome); border: 3px solid var(--frame); color: var(--frame);
+  font-family: var(--display); font-weight: 700; font-size: 16px; line-height: 1;
+}
+.win-body { padding: 16px 20px 22px; display: grid; gap: 14px; }
+.label { margin: 0 0 -6px; font-family: var(--display); font-weight: 600; font-size: 20px; }
+
+/* upload */
+.dropzone {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px;
+  background: #FFFFFF; border: 3px dashed var(--frame); cursor: pointer;
+}
+.dropzone.drag { background: #E3E7F8; }
+.dropzone input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.pill {
+  display: inline-block; padding: 6px 14px; background: var(--chrome); color: var(--ink);
+  border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); font-family: var(--body); font-size: 21px;
+}
+.dropzone .hint { color: var(--muted); font-size: 19px; }
+.dropzone:focus-within { outline: 3px dashed var(--frame); outline-offset: 4px; }
+
+/* sample picker */
+.field-label { display: block; margin: 0 0 6px; }
+select {
+  width: 100%; appearance: none; -webkit-appearance: none; padding: 7px 40px 7px 10px;
+  font-family: var(--body); font-size: 21px; color: var(--ink);
+  background: #FFFFFF url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='10' viewBox='0 0 7 5' shape-rendering='crispEdges'%3E%3Cpath fill='%232E2F5B' d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") no-repeat right 12px center;
+  border: 3px solid var(--ink); border-radius: 0; box-shadow: 3px 3px 0 var(--ink);
+}
+select:focus-visible { outline: 3px dashed var(--frame); outline-offset: 4px; }
+
+/* photo */
+.photo { border: 4px solid var(--ink); background: #FFFFFF; min-height: 230px; display: flex;
+  align-items: center; justify-content: center; }
+.photo img { display: block; width: 100%; max-height: 340px; object-fit: contain; }
+.photo.empty { border: 4px dashed #A9AFD6; flex-direction: column; gap: 12px; color: var(--muted); text-align: center; }
+.photo.empty p, .waiting p { margin: 0; color: var(--muted); max-width: 30ch; line-height: 1.15; }
+.ghost { opacity: 0.35; }
+
+/* main button */
+.btn {
+  justify-self: start; font-family: var(--display); font-weight: 600; font-size: 22px; color: var(--ink);
+  background: #AFC0F0; border: 3px solid var(--ink); border-radius: 0; box-shadow: 5px 5px 0 var(--ink);
+  padding: 8px 22px; cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: #C3D0F5; }
+.btn:active:not(:disabled) { transform: translate(5px, 5px); box-shadow: none; }
+.btn:focus-visible { outline: 3px dashed var(--frame); outline-offset: 4px; }
+.btn:disabled { cursor: not-allowed; opacity: 0.55; }
+
+/* ---------- verdict ---------- */
+.waiting {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  min-height: 200px; padding: 18px; text-align: center; background: #FFFFFF; border: 4px dashed #A9AFD6;
+}
+.verdict {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: center;
+  border: 4px solid var(--ink); padding: 14px 16px; box-shadow: 6px 6px 0 rgba(46, 47, 91, 0.35);
+}
+.verdict svg { grid-row: span 2; }
+.verdict h3 { margin: 0; font-family: var(--display); font-weight: 700; font-size: 32px; line-height: 1; }
+.verdict p { margin: 0; line-height: 1.15; }
+.verdict.fresh { background: #D7F0DD; }
+.verdict.rotten { background: #F1DCEA; }
+.verdict.unsure, .verdict.not_produce { background: #FBF0CC; }
+@media (prefers-reduced-motion: no-preference) {
+  .verdict { animation: pop 0.28s steps(4, end) both; }
+  @keyframes pop { from { transform: scale(0.86); opacity: 0; } to { transform: none; opacity: 1; } }
+}
+.scores { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 12px; align-items: center; margin-top: 16px; }
+.scores .n { font-family: var(--display); font-size: 18px; }
+.scores .v { min-width: 52px; text-align: right; }
+.cells { display: flex; gap: 3px; padding: 3px; background: var(--ink); }
+.cell { flex: 1; height: 16px; background: #5A5D8C; }
+.cells.fresh .on { background: var(--fresh); box-shadow: inset 0 3px 0 #B4E6C0; }
+.cells.rotten .on { background: var(--rotten); box-shadow: inset 0 3px 0 #E6B9D6; }
+.cells.load .on { background: #AFC0F0; box-shadow: inset 0 3px 0 #DCE3FA; }
+.guess { margin: 14px 0 0; }
+.guess b, .about b, .rules b { font-family: var(--display); font-weight: 700; font-size: 20px; }
+
+/* ---------- about ---------- */
+.rules { background: #FBF0CC; border: 3px solid var(--ink); box-shadow: 4px 4px 0 rgba(46, 47, 91, 0.35);
+  padding: 10px 14px; }
+.rules p { margin: 0; line-height: 1.15; }
+.rules .t { font-family: var(--display); font-weight: 700; font-size: 20px; margin-bottom: 4px; }
+.about { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.about li { display: grid; grid-template-columns: 14px 1fr; gap: 10px; align-items: baseline; line-height: 1.15; }
+.about li::before { content: ""; width: 10px; height: 10px; background: var(--titlebar); box-shadow: 2px 2px 0 var(--frame); }
+a { color: var(--frame); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+a:focus-visible { outline: 3px dashed var(--frame); outline-offset: 3px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .desk { grid-template-columns: 1fr; gap: 26px; }
+  .page { padding: 24px 16px 40px; }
+}
+@media (max-width: 480px) {
+  .win-body { padding: 14px 14px 18px; }
+  .title { gap: 8px; }
+  .title svg { width: 40px; height: 40px; }
+  .tagline { font-size: 21px; }
+  .verdict h3 { font-size: 27px; }
+}
