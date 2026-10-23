@@ -6,8 +6,6 @@ a fruit"* when it isn't one.
 
 **Live demo (always on):** https://g-reenmamba.github.io/fruit-detector/
 
-The model runs entirely in your browser, so there's no server to fall asleep. The
-Streamlit version is at https://fruit-detector-jywf8hr9vrvfnj8appppdlxl.streamlit.app
 
 ![screenshot](docs/screenshot.png)
 
