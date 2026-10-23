@@ -29,7 +29,7 @@ The GitHub Pages site (`docs/`) runs the same image encoder in the visitor's bro
 with ONNX Runtime Web: an 89 MB model, downloaded once and then cached, with the
 weights stored as 8-bit (one scale per output channel). Standard 8-bit quantization
 dropped the 71-photo test to 65/71, so only the weights are 8-bit and the maths stays
-in full precision: **69/71 in the browser, identical to PyTorch.** Your photo never
+in full precision: **70/71 in the browser, identical to PyTorch.** Your photo never
 leaves your device.
 
 ## The interesting part: three versions, and what each one got wrong
@@ -38,9 +38,12 @@ leaves your device.
 | --- | --- | --- |
 | v1 | ResNet18 fine-tuned on 7 screenshots | Learned the **background** (fresh on white, rotten on grey). Its "best" checkpoint scored 50% on its own validation set. |
 | v2 | EfficientNet-B0 fine-tuned on 14k photos of 4 fruits, with fruit-held-out validation, balanced sampling, strong augmentation, calibration | 91% on held-out *fruits*, but called fresh **potatoes, beetroot, ginger and a cut watermelon rotten**. With four fruits as its only fresh examples, it learned "brown / dark / irregular = rotten". |
-| **v3** | **CLIP zero-shot, per-produce prompts** | Two misses in 71 test photos (a subtly mouldy lemon, a tomato with black spots). |
+| **v3** | **CLIP zero-shot, per-produce prompts** | One miss in 71 test photos (a subtly mouldy lemon). It judges the whole photo, so a photo of several fruits where only one is rotten can read fresh, hence the one-fruit rule. |
 
 ### Results on 71 real photos the model never saw
+
+_The tomato sample used to show three tomatoes, breaking the app's own one-fruit
+rule, and read fresh. It's now cropped to the single rotten one._
 
 Reproduce with `python3 scripts/evaluate.py` (downloads the test photos from pinned repos).
 
@@ -48,8 +51,8 @@ Reproduce with `python3 scripts/evaluate.py` (downloads the test photos from pin
 | --- | --- | --- |
 | 34 fresh fruits & vegetables, many cut (watermelon slice, pomegranate, kiwi, beetroot...) | 21 / 34 | **34 / 34** |
 | 25 fresh *and* rotten, mostly other types (lemon, mango, tamarillo, lulo, potato, tomato...) | 15 / 25 | **24 / 25** |
-| 12 app samples | 11 / 12 | 11 / 12 |
-| **Total** | 47 / 71 (66%) | **69 / 71 (97%)** |
+| 12 app samples | 11 / 12 | **12 / 12** |
+| **Total** | 47 / 71 (66%) | **70 / 71 (99%)** |
 
 On the 4,000-photo apple / banana / orange / strawberry test set, CLIP with no training
 gets **91.2%** balanced accuracy, about the same as v2's 90.8% leave-one-fruit-out score.
@@ -63,6 +66,9 @@ None of the 394 real produce photos checked were wrongly refused as "not a fruit
   learned *"studio photo = fresh"*, just a new shortcut.
 - **Training a classifier on CLIP features** using our four fruits: it re-learned v2's
   bias (21/36 on fresh produce).
+- **Zooming in** (also scoring five crops, to catch small rot spots): caught more rot on
+  the Kaggle fruit photos, but not on real-world ones, flipped between browsers on
+  borderline photos, and made each check 3x slower in the web app.
 - **Extra "dark spots / mould" prompts**: fixed the tomato but broke four fresh photos,
   so the original prompts stayed.
 

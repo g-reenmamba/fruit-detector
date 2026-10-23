@@ -14,6 +14,7 @@ Why this instead of the fine-tuned CNN in model.py? See scripts/export_clip.py
 and the README: the CNN only knew four fruits; CLIP generalises to almost any.
 """
 
+import io
 import os
 
 import torch
@@ -76,14 +77,37 @@ def load_detector(checkpoint_dir=CHECKPOINT_DIR):
 
 
 @torch.no_grad()
+def to_srgb(image):
+    """
+    RGB image in standard sRGB colours. Photos from Macs and iPhones often embed
+    a wider colour profile (Display P3); browsers convert those to sRGB before
+    showing them, so we do the same. Otherwise a saturated red tomato is
+    literally different pixels here than in the browser version.
+    """
+    icc = image.info.get("icc_profile")
+    if icc:
+        try:
+            from PIL import ImageCms
+            src = ImageCms.ImageCmsProfile(io.BytesIO(icc))
+            return ImageCms.profileToProfile(image.convert("RGB"), src, ImageCms.createProfile("sRGB"), outputMode="RGB")
+        except Exception:
+            pass  # unreadable profile: fall back to the raw numbers
+    return image.convert("RGB")
+
+
+@torch.no_grad()
 def analyse(image, det):
     """
     PIL image -> dict(
         rotten=P(rotten), fresh=P(fresh)      over produce prompts only
         produce=best-matching produce name,   produce_conf=its share of the vote
         not_produce=P(photo isn't produce at all))
+
+    (Tried and dropped: also scoring zoomed-in crops to catch small rot spots.
+    It helped on the Kaggle 4-fruit photos but not on real-world ones, was
+    fragile across browsers, and tripled the time per check in the web app.)
     """
-    img = image.convert("RGB")
+    img = to_srgb(image)
     x = torch.stack([PREPROCESS(img), PREPROCESS(img.transpose(Image.FLIP_LEFT_RIGHT))])
     feats = F.normalize(det["visual"](x), dim=-1)
     f = F.normalize(feats.sum(0), dim=0)                    # photo + its mirror image

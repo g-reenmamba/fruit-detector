@@ -29,6 +29,18 @@ Tried and rejected:
 Chosen: CLIP ViT-B/32 (OpenCLIP, LAION-400M) with per-produce prompts, no training:
     python3 scripts/export_clip.py      # builds checkpoints/clip_*
     python3 scripts/evaluate.py
-      produce 34/34 | mixed 24/25 | samples 11/12 | total 69/71
+      produce 34/34 | mixed 24/25 | samples 12/12 | total 70/71
+      (samples were 11/12 before the 3-tomato sample was cropped to one tomato)
     same 71 photos with the v2 EfficientNet: 47/71
     4-fruit Kaggle set (4,000 photos, zero-shot): balanced accuracy 0.912
+
+## Colour profiles and the zoom-in experiment
+
+The browser version called the tomato sample fresh while Python called it rotten.
+Cause: Mac screenshots embed a Display P3 colour profile; browsers convert it to
+sRGB, Python was reading the raw numbers. clip_detector now converts to sRGB too.
+
+Zoom-in crops (whole photo + 5 crops, colour-managed), whole-photo vs best rule:
+    1,200 held-out Kaggle photos: 1135 -> 1141 to 1147 correct
+    71 real-world photos:          69 -> 67 to 68 correct, and 3x slower in the browser
+Dropped. The 3-tomato sample was cropped to the single rotten tomato instead (99.9% rotten).
